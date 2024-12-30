@@ -1,16 +1,19 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import "./App.css";
 
-
-// App bileşeni, uygulamanın ana bileşeni
 const App = () => {
-  const [roomId, setRoomId] = useState(""); // Oda ID'si
-  const [isConnected, setIsConnected] = useState(false); // Bağlantı durumu
-  const [localStream, setLocalStream] = useState(null); // Yerel video ve ses akışı
-  const [processedVideoUrl, setProcessedVideoUrl] = useState(null); // İşlenmiş video URL'si
-  const videoRef = useRef(null); // Kullanıcı videosu için referans
+  const [roomId, setRoomId] = useState("");
+  const [inputRoomId, setInputRoomId] = useState("");
+  const [isConnected, setIsConnected] = useState(false);
+  const [localStream, setLocalStream] = useState(null);
+  const [processedVideoUrl, setProcessedVideoUrl] = useState(null);
+  const [hasToken, setHasToken] = useState(false);
+  const [tokenId, setTokenId] = useState(null);
+  const videoRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
 
-  // Kullanıcının kamera ve mikrofonuna erişim
   const startLocalStream = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -26,113 +29,129 @@ const App = () => {
     }
   };
 
+  const createRoom = () => {
+    const newRoomId = Math.random().toString(36).substring(7);
+    setRoomId(newRoomId);
+    setIsConnected(true);
+    setTokenId(Math.random().toString(36).substring(7));
+    startLocalStream();
+  };
 
-  // Videoyu backend'e gönderme ve işlenmiş videoyu alma
-  const uploadVideo = async () => {
-    if (!localStream) {
-      alert("Lütfen önce kamerayı açın.");
-      return;
+  const joinRoom = () => {
+    if (inputRoomId.trim()) {
+      setRoomId(inputRoomId);
+      setIsConnected(true);
+      setTokenId(Math.random().toString(36).substring(7));
+      startLocalStream();
     }
+  };
 
-    // Akışı bir blob olarak kaydetmek
-    const mediaRecorder = new MediaRecorder(localStream, { mimeType: "video/mp4;codecs=avc1,mp4a.40.2" });
-    const chunks = [];
-    mediaRecorder.ondataavailable = (event) => {
-      chunks.push(event.data);
+  const claimToken = () => {
+    setHasToken(true);
+    startRecording();
+  };
+
+  const releaseToken = () => {
+    setHasToken(false);
+    stopRecording();
+  };
+
+  const startRecording = () => {
+    if (!localStream) return;
+
+    chunksRef.current = [];
+    mediaRecorderRef.current = new MediaRecorder(localStream);
+    
+    mediaRecorderRef.current.ondataavailable = (event) => {
+      chunksRef.current.push(event.data);
     };
 
-    mediaRecorder.onstop = async () => {
-
-      const blob = new Blob(chunks, { type: "video/webm" });
+    mediaRecorderRef.current.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: "video/webm" });
       const formData = new FormData();
       formData.append("video", blob, "video.webm");
-
       formData.append("src_lang", "tur");
       formData.append("target_language_for_mt", "eng");
-      formData.append("target_language_for_tts", "en");
 
       try {
-        const response = await axios.post(
-          "https://5d81-34-81-33-241.ngrok-free.app/full-pipeline",
-          formData,
-          {
-            headers: {
-              Accept: "*/*",
-              "User-Agent": "Axios/1.0",
-              Connection: "keep-alive", // Bağlantıyı açık tut
-            },
-            responseType: "arraybuffer", // Binary data almak için
-          }
-        );
-  
-        console.log("Response:", response.data);
-        console.log("Processed video URL:", response.data.processed_file);
-        console.log("Translated text:", response);
-
-        // Backend'den gelen binary video verisini URL'ye dönüştür
-        const videoBlob = new Blob([response.data], { type: "video/mp4" });
-        const videoUrl = URL.createObjectURL(videoBlob);
-        setProcessedVideoUrl(videoUrl);
-
-        //setProcessedVideoUrl(response.data.processed_file); // İşlenmiş video URL'sini kaydet
-        } catch (err) {
-        console.error("Error uploading video:", err);
+        await uploadVideo(formData);
+      } catch (error) {
+        console.error("Error uploading video:", error);
       }
     };
 
-    // Video kaydını başlat ve sonra durdur
-    mediaRecorder.start();
-    setTimeout(() => {
-      mediaRecorder.stop();
-    }, 5000); // 5 saniye boyunca kaydet
+    mediaRecorderRef.current.start();
+    setInterval(() => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.start();
+      }
+    }, 5000);
   };
 
-  useEffect(() => {
-    if (localStream && videoRef.current) {
-      videoRef.current.srcObject = localStream;
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
     }
-  }, [localStream]);
+  };
+
+  const uploadVideo = async (formData) => {
+    try {
+      const response = await axios.post(
+        "https://b83a-34-143-198-121.ngrok-free.app/full-pipeline",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+      console.log("Video uploaded successfully:", response.data);
+    } catch (error) {
+      console.error("Error uploading video:", error);
+    }
+  };
 
   return (
-    <div style={{ padding: "20px" }}>
-      <h1>Video İşleme Uygulaması</h1>
-      <div style={{ marginBottom: "10px" }}>
-        <label>
-          Oda ID'si:
-          <input
-            type="text"
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
-            style={{ marginLeft: "10px" }}
-          />
-        </label>
-        <button
-          onClick={() => {
-            if (roomId.trim()) {
-              setIsConnected(true);
-              startLocalStream();
-            } else {
-              alert("Lütfen bir oda ID'si girin.");
-            }
-          }}
-          style={{ marginLeft: "10px" }}
-        >
-          Odaya Katıl
-        </button>
-      </div>
-      <div>
-        <h3>Kendi Görüntünüz</h3>
-        <video ref={videoRef} autoPlay playsInline muted style={{ width: "300px" }} />
-      </div>
-      {isConnected && (
-        <div style={{ marginTop: "20px" }}>
-          <button onClick={uploadVideo}>Videoyu İşle</button>
+    <div className="app-container">
+      {!isConnected ? (
+        <div className="landing-page">
+          <h1>Video Conferencing App</h1>
+          <div className="create-room">
+            <button onClick={createRoom}>Create Meeting Room</button>
+          </div>
+          <div className="join-room">
+            <input
+              type="text"
+              value={inputRoomId}
+              onChange={(e) => setInputRoomId(e.target.value)}
+              placeholder="Enter Meeting ID"
+            />
+            <button onClick={joinRoom}>Join Room</button>
+          </div>
         </div>
-      )}
-      {processedVideoUrl && (
-        <div style={{ marginTop: "20px" }}>
-          <h3>İşlenmiş Video</h3>
-          <video src={processedVideoUrl} controls style={{ width: "300px" }} />
+      ) : (
+        <div className="meeting-room">
+          <div className="room-info">
+            <h2>Meeting Room: {roomId}</h2>
+            <div className="token-section">
+              <h3>Token ID: {tokenId}</h3>
+              {!hasToken ? (
+                <button onClick={claimToken}>Claim Token</button>
+              ) : (
+                <button onClick={releaseToken}>Release Token</button>
+              )}
+            </div>
+          </div>
+          <div className="video-container">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted={!hasToken}
+              className="video-player"
+            />
+          </div>
         </div>
       )}
     </div>
