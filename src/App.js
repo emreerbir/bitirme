@@ -53,7 +53,7 @@ const App = () => {
 
       try {
         const response = await axios.post(
-          "https://5d81-34-81-33-241.ngrok-free.app/full-pipeline",
+          "https://13c9-34-80-109-112.ngrok-free.app/full-pipeline",
           formData,
           {
             headers: {
@@ -84,7 +84,7 @@ const App = () => {
     mediaRecorder.start();
     setTimeout(() => {
       mediaRecorder.stop();
-    }, 5000); // 5 saniye boyunca kaydet
+    }, 20000); // 5 saniye boyunca kaydet
   };
 
   useEffect(() => {
