@@ -21,8 +21,7 @@ const App = () => {
   const [isPlaying, setIsPlaying] = useState(false); // Şu anda bir video oynatılıyor mu
   const [isProcessing, setIsProcessing] = useState(false); // İşleme durumu
   const intervalRef = useRef(null); // setInterval referansı
-
-
+  const [currentVideoUrl, setCurrentVideoUrl] = useState(null); // Oynatılan video URL'si
 
   // Kullanıcının kamera ve mikrofonuna erişim
   const startLocalStream = async () => {
@@ -40,7 +39,6 @@ const App = () => {
     }
   };
 
-
   // Videoyu backend'e gönderme ve işlenmiş videoyu alma
   const uploadVideo = async () => {
     if (!localStream) {
@@ -49,14 +47,15 @@ const App = () => {
     }
 
     // Akışı bir blob olarak kaydetmek
-    const mediaRecorder = new MediaRecorder(localStream, { mimeType: "video/mp4;codecs=avc1,mp4a.40.2" });
+    const mediaRecorder = new MediaRecorder(localStream, {
+      mimeType: "video/mp4;codecs=avc1,mp4a.40.2",
+    });
     const chunks = [];
     mediaRecorder.ondataavailable = (event) => {
       chunks.push(event.data);
     };
 
     mediaRecorder.onstop = async () => {
-
       const blob = new Blob(chunks, { type: "video/webm" });
       const formData = new FormData();
       formData.append("video", blob, "video.webm");
@@ -67,7 +66,7 @@ const App = () => {
 
       try {
         const response = await axios.post(
-          "https://9582-35-240-178-145.ngrok-free.app/full-pipeline",
+          "https://ed11-35-230-7-101.ngrok-free.app/full-pipeline",
           formData,
           {
             headers: {
@@ -78,7 +77,7 @@ const App = () => {
             responseType: "arraybuffer", // Binary data almak için
           }
         );
-  
+
         console.log("Response:", response.data);
         console.log("Processed video URL:", response.data.processed_file);
         console.log("Translated text:", response);
@@ -88,11 +87,9 @@ const App = () => {
         const videoUrl = URL.createObjectURL(videoBlob);
         setProcessedVideoUrl(videoUrl);
 
-        //setProcessedVideoUrl(response.data.processed_file); // İşlenmiş video URL'sini kaydet
-
         // Videoyu kuyruğa ekle
         setVideoQueue((prevQueue) => [...prevQueue, videoUrl]);
-        } catch (err) {
+      } catch (err) {
         console.error("Error uploading video:", err);
       }
     };
@@ -108,7 +105,7 @@ const App = () => {
     if (isProcessing) return; // Zaten işlem devam ediyorsa tekrar başlatma
     setIsProcessing(true);
 
-    // Her 20 saniyede bir video yükleme işlemi başlat
+    // Her 8 saniyede bir video yükleme işlemi başlat
     intervalRef.current = setInterval(() => {
       uploadVideo();
     }, 8000);
@@ -187,114 +184,63 @@ const App = () => {
 
   // Kuyruğa eklenen videoları sırayla oynatma
   useEffect(() => {
-    if (videoQueue.length > 0 && !isPlaying) {
+    if (!isPlaying && videoQueue.length > 0) {
       setIsPlaying(true);
-      const currentVideo = videoQueue[0];
-      const videoElement = document.createElement("video");
-      videoElement.src = currentVideo;
-      videoElement.controls = true;
-      videoElement.style.width = "300px";
-
-      videoElement.onended = () => {
-        setVideoQueue((prevQueue) => prevQueue.slice(1)); // Kuyruğun ilk elemanını çıkar
-        setIsPlaying(false); // Bir sonraki video oynatılabilir
-      };
-
-      const container = document.getElementById("processed-video-container");
-      if (container) {
-        container.innerHTML = ""; // Önceki videoları temizle
-        container.appendChild(videoElement); // Yeni videoyu ekle
-        videoElement.play();
-      }
+      const nextVideoUrl = videoQueue[0];
+      setCurrentVideoUrl(nextVideoUrl);
+      setVideoQueue((prevQueue) => prevQueue.slice(1)); // Kuyruğun ilk elemanını çıkar
     }
   }, [videoQueue, isPlaying]);
+
+  // Video bittiğinde isPlaying'i false yap
+  const handleVideoEnded = () => {
+    setIsPlaying(false);
+    setCurrentVideoUrl(null);
+  };
 
   useEffect(() => {
     if (localStream && videoRef.current) {
       videoRef.current.srcObject = localStream;
     }
-    // return () => {
-    //   disconnectSocket();
-    // };
   }, [localStream]);
 
-//   return (
-//     <div style={{ padding: "20px" }}>
-//       <h1>Video İşleme Uygulaması</h1>
-//       <div style={{ marginBottom: "10px" }}>
-//         <label>
-//           Oda ID'si:
-//           <input
-//             type="text"
-//             value={roomId}
-//             onChange={(e) => setRoomId(e.target.value)}
-//             style={{ marginLeft: "10px" }}
-//           />
-//         </label>
-//         <button
-//           onClick={() => {
-//             if (roomId.trim()) {
-//               setIsConnected(true);
-//               startLocalStream();
-//             } else {
-//               alert("Lütfen bir oda ID'si girin.");
-//             }
-//           }}
-//           style={{ marginLeft: "10px" }}
-//         >
-//           Odaya Katıl
-//         </button>
-//       </div>
-//       <div>
-//         <h3>Kendi Görüntünüz</h3>
-//         <video ref={videoRef} autoPlay playsInline muted style={{ width: "300px" }} />
-//       </div>
-//       {isConnected && (
-//         <div style={{ marginTop: "20px" }}>
-//           <button onClick={uploadVideo}>Videoyu İşle</button>
-//         </div>
-//       )}
-//       {processedVideoUrl && (
-//         <div style={{ marginTop: "20px" }}>
-//           <h3>İşlenmiş Video</h3>
-//           <video src={processedVideoUrl} controls style={{ width: "300px" }} />
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
-
-return (
-  <div style={{ padding: "20px" }}>
-    <h1>Konferans ve Video İşleme Uygulaması</h1>
-    <div style={{ marginBottom: "10px" }}>
-      <label>
-        Oda ID'si:
-        <input
-          type="text"
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value)}
+  return (
+    <div style={{ padding: "20px" }}>
+      <h1>Konferans ve Video İşleme Uygulaması</h1>
+      <div style={{ marginBottom: "10px" }}>
+        <label>
+          Oda ID'si:
+          <input
+            type="text"
+            value={roomId}
+            onChange={(e) => setRoomId(e.target.value)}
+          />
+        </label>
+        <button
+          onClick={() => {
+            if (roomId.trim()) {
+              setIsConnected(true);
+              startLocalStream();
+              joinRoom();
+            } else {
+              alert("Lütfen bir oda ID'si girin.");
+            }
+          }}
+        >
+          Odaya Katıl
+        </button>
+      </div>
+      <div>
+        <h3>Kendi Görüntünüz</h3>
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{ width: "300px" }}
         />
-      </label>
-      <button
-        onClick={() => {
-          if (roomId.trim()) {
-            setIsConnected(true);
-            startLocalStream();
-            joinRoom();
-          } else {
-            alert("Lütfen bir oda ID'si girin.");
-          }
-        }}
-      >
-        Odaya Katıl
-      </button>
-    </div>
-    <div>
-      <h3>Kendi Görüntünüz</h3>
-      <video ref={videoRef} autoPlay playsInline muted style={{ width: "300px" }} />
-    </div>
-    {isConnected && (
+      </div>
+      {isConnected && (
         <div style={{ marginTop: "20px" }}>
           {!isProcessing ? (
             <button onClick={startProcessing}>Videoyu İşle</button>
@@ -303,17 +249,36 @@ return (
           )}
         </div>
       )}
-    <div id="processed-video-container" style={{ marginTop: "20px" }}>
+      <div id="processed-video-container" style={{ marginTop: "20px" }}>
         <h3>İşlenmiş Video</h3>
+        {currentVideoUrl && (
+          <video
+            src={currentVideoUrl}
+            controls
+            autoPlay
+            onEnded={handleVideoEnded}
+            style={{ width: "300px" }}
+          />
+        )}
       </div>
-    {remoteStreams.map(({ userId, stream }) => (
-      <div key={userId}>
-        <h3>Kullanıcı: {userId}</h3>
-        <video autoPlay playsInline muted={false} style={{ width: "300px" }} />
-      </div>
-    ))}
-  </div>
-);
+      {remoteStreams.map(({ userId, stream }) => (
+        <div key={userId}>
+          <h3>Kullanıcı: {userId}</h3>
+          <video
+            autoPlay
+            playsInline
+            muted={false}
+            style={{ width: "300px" }}
+            ref={(videoElement) => {
+              if (videoElement) {
+                videoElement.srcObject = stream;
+              }
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  );
 };
 
 export default App;
